@@ -91,15 +91,17 @@ static void task_process_handler(void *arg)
     //  * @param nms_threshold     predicted boxes with IoU higher than the threshold will be filtered out
     //  * @param top_k             first k highest score boxes will be remained
     //  * @param resize_scale      resize scale to implement on input image
-    // HumanFaceDetectMSR01 detector(0.3F, 0.3F, 10, 0.3F);
-    // HumanFaceDetectMNP01 detector2(0.4F, 0.3F, 10);
-    HumanFaceDetectMSR01 detector(0.1F, 0.5F, 10, 0.2F);
-    HumanFaceDetectMNP01 detector2(0.5F, 0.3F, 5);
+    HumanFaceDetectMSR01 detector(0.3F, 0.3F, 10, 0.3F);
+    HumanFaceDetectMNP01 detector2(0.4F, 0.3F, 10);
+    // HumanFaceDetectMSR01 detector(0.1F, 0.5F, 10, 0.2F);
+    // HumanFaceDetectMNP01 detector2(0.5F, 0.3F, 5);
 
 #if CONFIG_MFN_V1
 #if CONFIG_S8
+    ESP_LOGE("DAH", "Face Recognition using INT8 Quantized Model");
     FaceRecognition112V1S8 *recognizer = new FaceRecognition112V1S8();
 #elif CONFIG_S16
+    ESP_LOGE("DAH", "Face Recognition using FLOAT16 Quantized Model");
     FaceRecognition112V1S16 *recognizer = new FaceRecognition112V1S16();
 #endif
 #endif
@@ -127,28 +129,26 @@ static void task_process_handler(void *arg)
                 std::list<dl::detect::result_t> &detect_results = detector2.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_candidates);
 
                 int i = 0;
-                for (std::list<dl::detect::result_t>::iterator iter = detect_results.begin(); iter != detect_results.end(); iter++, i++)
+                for (std::list<dl::detect::result_t>::iterator face_result = detect_results.begin(); face_result != detect_results.end(); face_result++, i++)
                 {
-                }
+                // }
 
-
-                if (detect_results.size() >= 1)
-                {
+                // while (detect_results.size() > 0)
+                // {
                     ESP_LOGI("DAH", "results=%d", i);
-                    is_detected = true;
+                    // is_detected = true;
 
                     ESP_LOGE("DAH", "Detected %d people and %d cadidates with frame height=%d and width=%d", detect_results.size(), detect_candidates.size(), (int)frame->height, (int)frame->width);
-                }
+                // }
 
-                if (is_detected)
-                {
-                    // recognizer->get_face_emb().print_all();
-                    count++;
+                // if (is_detected)
+                // {
+                    // count++;
                     // gpio_set_level(GPIO_NUM_4, count%2);
-                    ESP_LOGW("DAH", "Enrolled ids num==%d", recognizer->get_enrolled_ids().size());
+                    ESP_LOGW("DAH", "%d Enrolled ids", recognizer->get_enrolled_ids().size());
                     if (recognizer->get_enrolled_ids().size() <= 2)
                     {
-                        recognizer->enroll_id((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint, "", true);
+                        recognizer->enroll_id((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, face_result->keypoint, "", true);
                         ESP_LOGE("ENROLL", "ID %d is enrolled", recognizer->get_enrolled_ids().back().id);
                         recognizer->get_face_emb().print_all();
                         recognizer->get_face_emb().print_shape();
@@ -156,7 +156,7 @@ static void task_process_handler(void *arg)
                     else
                     {
                         ESP_LOGW("RECOGNIZE", "Do recognition");
-                        recognize_result = recognizer->recognize((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint);
+                        recognize_result = recognizer->recognize((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, face_result->keypoint);
                         // print_detection_result(detect_results);
                         if (recognize_result.id > 0)
                         {
@@ -197,7 +197,8 @@ static void task_process_handler(void *arg)
                     //     break;
                     // }
                 }
-                else
+
+                if (detect_results.size() <= 0)
                 {
                     ESP_LOGE("DAH:", "No person detected!");
                 }
@@ -306,7 +307,7 @@ void register_human_face_recognition(const QueueHandle_t frame_i,
     gReturnFB = camera_fb_return;
     xMutex = xSemaphoreCreateMutex();
 
-    xTaskCreatePinnedToCore(task_process_handler, TAG, 4 * 1024, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(task_process_handler, TAG, 5 * 1024, NULL, 5, NULL, 0);
     if (xQueueEvent)
         xTaskCreatePinnedToCore(task_event_handler, TAG, 4 * 1024, NULL, 5, NULL, 1);
 }
