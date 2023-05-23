@@ -19,6 +19,7 @@
 #endif
 
 #include "who_ai_utils.hpp"
+#include "driver/gpio.h"
 
 using namespace std;
 using namespace dl;
@@ -86,8 +87,14 @@ static int rgb_printf(camera_fb_t *fb, uint32_t color, const char *format, ...)
 static void task_process_handler(void *arg)
 {
     camera_fb_t *frame = NULL;
-    HumanFaceDetectMSR01 detector(0.3F, 0.3F, 10, 0.3F);
-    HumanFaceDetectMNP01 detector2(0.4F, 0.3F, 10);
+    //  * @param score_threshold   predicted boxes with score lower than the threshold will be filtered out
+    //  * @param nms_threshold     predicted boxes with IoU higher than the threshold will be filtered out
+    //  * @param top_k             first k highest score boxes will be remained
+    //  * @param resize_scale      resize scale to implement on input image
+    // HumanFaceDetectMSR01 detector(0.3F, 0.3F, 10, 0.3F);
+    // HumanFaceDetectMNP01 detector2(0.4F, 0.3F, 10);
+    HumanFaceDetectMSR01 detector(0.1F, 0.5F, 10, 0.2F);
+    HumanFaceDetectMNP01 detector2(0.5F, 0.3F, 5);
 
 #if CONFIG_MFN_V1
 #if CONFIG_S8
@@ -101,6 +108,8 @@ static void task_process_handler(void *arg)
     recognizer->set_partition(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "fr");
     int partition_result = recognizer->set_ids_from_flash();
 
+    int count = 0;
+    bool saveRec = true;
     while (true)
     {
         xSemaphoreTake(xMutex, portMAX_DELAY);
@@ -117,79 +126,120 @@ static void task_process_handler(void *arg)
                 std::list<dl::detect::result_t> &detect_candidates = detector.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3});
                 std::list<dl::detect::result_t> &detect_results = detector2.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_candidates);
 
-                if (detect_results.size() == 1)
+                int i = 0;
+                for (std::list<dl::detect::result_t>::iterator iter = detect_results.begin(); iter != detect_results.end(); iter++, i++)
+                {
+                }
+
+
+                if (detect_results.size() >= 1)
+                {
+                    ESP_LOGI("DAH", "results=%d", i);
                     is_detected = true;
+
+                    ESP_LOGE("DAH", "Detected %d people and %d cadidates with frame height=%d and width=%d", detect_results.size(), detect_candidates.size(), (int)frame->height, (int)frame->width);
+                }
 
                 if (is_detected)
                 {
-                    switch (_gEvent)
+                    // recognizer->get_face_emb().print_all();
+                    count++;
+                    // gpio_set_level(GPIO_NUM_4, count%2);
+                    ESP_LOGW("DAH", "Enrolled ids num==%d", recognizer->get_enrolled_ids().size());
+                    if (recognizer->get_enrolled_ids().size() <= 2)
                     {
-                    case ENROLL:
                         recognizer->enroll_id((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint, "", true);
-                        ESP_LOGW("ENROLL", "ID %d is enrolled", recognizer->get_enrolled_ids().back().id);
-                        frame_show_state = SHOW_STATE_ENROLL;
-                        break;
-
-                    case RECOGNIZE:
+                        ESP_LOGE("ENROLL", "ID %d is enrolled", recognizer->get_enrolled_ids().back().id);
+                        recognizer->get_face_emb().print_all();
+                        recognizer->get_face_emb().print_shape();
+                    }
+                    else
+                    {
+                        ESP_LOGW("RECOGNIZE", "Do recognition");
                         recognize_result = recognizer->recognize((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint);
-                        print_detection_result(detect_results);
+                        // print_detection_result(detect_results);
                         if (recognize_result.id > 0)
-                            ESP_LOGI("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
+                        {
+                            ESP_LOGW("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
+                        }
                         else
-                            ESP_LOGE("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
-                        frame_show_state = SHOW_STATE_RECOGNIZE;
-                        break;
+                        {
+                            ESP_LOGW("RECOGNIZE", "Detected person was not recognized");
+                        }
 
-                    case DELETE:
-                        vTaskDelay(10);
-                        recognizer->delete_id(true);
-                        ESP_LOGE("DELETE", "% d IDs left", recognizer->get_enrolled_id_num());
-                        frame_show_state = SHOW_STATE_DELETE;
-                        break;
-
-                    default:
-                        break;
                     }
-                }
 
-                if (frame_show_state != SHOW_STATE_IDLE)
+                    // switch (_gEvent)
+                    // {
+                    // case ENROLL:
+                    //     ESP_LOGW("ENROLL", "ID %d is enrolled", recognizer->get_enrolled_ids().back().id);
+                    //     frame_show_state = SHOW_STATE_ENROLL;
+                    //     break;
+
+                    // case RECOGNIZE:
+                    //     recognize_result = recognizer->recognize((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint);
+                    //     print_detection_result(detect_results);
+                    //     if (recognize_result.id > 0)
+                    //         ESP_LOGI("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
+                    //     else
+                    //         ESP_LOGE("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
+                    //     frame_show_state = SHOW_STATE_RECOGNIZE;
+                    //     break;
+
+                    // case DELETE:
+                    //     vTaskDelay(10);
+                    //     recognizer->delete_id(true);
+                    //     ESP_LOGE("DELETE", "% d IDs left", recognizer->get_enrolled_id_num());
+                    //     frame_show_state = SHOW_STATE_DELETE;
+                    //     break;
+
+                    // default:
+                    //     break;
+                    // }
+                }
+                else
                 {
-                    static int frame_count = 0;
-                    switch (frame_show_state)
-                    {
-                    case SHOW_STATE_DELETE:
-                        rgb_printf(frame, RGB565_MASK_RED, "%d IDs left", recognizer->get_enrolled_id_num());
-                        break;
-
-                    case SHOW_STATE_RECOGNIZE:
-                        if (recognize_result.id > 0)
-                            rgb_printf(frame, RGB565_MASK_GREEN, "ID %d", recognize_result.id);
-                        else
-                            rgb_print(frame, RGB565_MASK_RED, "who ?");
-                        break;
-
-                    case SHOW_STATE_ENROLL:
-                        rgb_printf(frame, RGB565_MASK_BLUE, "Enroll: ID %d", recognizer->get_enrolled_ids().back().id);
-                        break;
-
-                    default:
-                        break;
-                    }
-
-                    if (++frame_count > FRAME_DELAY_NUM)
-                    {
-                        frame_count = 0;
-                        frame_show_state = SHOW_STATE_IDLE;
-                    }
+                    ESP_LOGE("DAH:", "No person detected!");
                 }
 
-                if (detect_results.size())
-                {
-#if !CONFIG_IDF_TARGET_ESP32S3
-                    print_detection_result(detect_results);
-#endif
-                    draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results);
-                }
+                // if (frame_show_state != SHOW_STATE_IDLE)
+                // {
+                //     static int frame_count = 0;
+                //     switch (frame_show_state)
+                //     {
+                //     case SHOW_STATE_DELETE:
+                //         rgb_printf(frame, RGB565_MASK_RED, "%d IDs left", recognizer->get_enrolled_id_num());
+                //         break;
+
+                //     case SHOW_STATE_RECOGNIZE:
+                //         if (recognize_result.id > 0)
+                //             rgb_printf(frame, RGB565_MASK_GREEN, "ID %d", recognize_result.id);
+                //         else
+                //             rgb_print(frame, RGB565_MASK_RED, "who ?");
+                //         break;
+
+                //     case SHOW_STATE_ENROLL:
+                //         rgb_printf(frame, RGB565_MASK_BLUE, "Enroll: ID %d", recognizer->get_enrolled_ids().back().id);
+                //         break;
+
+                //     default:
+                //         break;
+                //     }
+
+                //     if (++frame_count > FRAME_DELAY_NUM)
+                //     {
+                //         frame_count = 0;
+                //         frame_show_state = SHOW_STATE_IDLE;
+                //     }
+                // }
+
+//                 if (detect_results.size())
+//                 {
+// #if !CONFIG_IDF_TARGET_ESP32S3
+//                     print_detection_result(detect_results);
+// #endif
+//                     draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results);
+//                 }
             }
 
             if (xQueueFrameO)
@@ -232,6 +282,23 @@ void register_human_face_recognition(const QueueHandle_t frame_i,
                                      const QueueHandle_t frame_o,
                                      const bool camera_fb_return)
 {
+        uint32_t press_code;
+    // zero-initialize the config structure.
+    gpio_config_t io_conf = {};
+    //disable interrupt
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    //set as output mode
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    //bit mask of the pins that you want to set,e.g.GPIO4
+    io_conf.pin_bit_mask = (1ULL<<4);
+    //disable pull-down mode
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    //disable pull-up mode
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    //configure GPIO with the given settings
+    gpio_config(&io_conf);
+
+
     xQueueFrameI = frame_i;
     xQueueFrameO = frame_o;
     xQueueEvent = event;
