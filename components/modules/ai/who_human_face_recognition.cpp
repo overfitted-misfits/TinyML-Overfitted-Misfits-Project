@@ -25,14 +25,11 @@
 using namespace std;
 using namespace dl;
 
-static const char *TAG = "human_face_recognition";
-
 static QueueHandle_t xQueueFrameI = NULL;
 static QueueHandle_t xQueueEvent = NULL;
 static QueueHandle_t xQueueFrameO = NULL;
 static QueueHandle_t xQueueResult = NULL;
 
-// static recognizer_state_t gEvent = DETECT;
 static bool gReturnFB = true;
 static std::vector<Tensor<float>> recognize_result_tensor;
 static face_info_t recognize_result;
@@ -76,7 +73,7 @@ static void task_process_handler(void *arg)
 
             // ESP_LOGE("DAH", "START");
             ESP_LOGI("DAH", "Detected %d people and %d cadidates with frame height=%d and width=%d; currently %d Enrolled ids", detect_results.size(), detect_candidates.size(), (int)frame->height, (int)frame->width, recognizer->get_enrolled_ids().size());
-            
+
             if (detect_results.size() > 0)
             {
                 i = 0;
@@ -91,12 +88,12 @@ static void task_process_handler(void *arg)
                         Tensor<float>& tensor = recognizer->get_face_emb();
                         tensor.print_all();
                         tensor.print_shape();
-                        // if ( xQueueResult != NULL )
-                        // {
-                        //     // recognize_result_tensor.insert(tensor.get_tensor())
-                        //     // Push faceprint to queue. If queue is busy, skip this faceprint
-                        //     xQueueSend(xQueueResult, &tensor, 0);
-                        // }
+                        if ( xQueueResult != NULL )
+                        {
+                            // recognize_result_tensor.insert(tensor.get_tensor())
+                            // Push faceprint to queue. If queue is busy, skip this faceprint
+                            xQueueSend(xQueueResult, &tensor, 0);
+                        }
                     } // if enrolled ids < 3
                     else // do recognition
                     {
@@ -156,5 +153,5 @@ void register_human_face_recognition(const QueueHandle_t frame_i,
     xQueueResult = result;
     gReturnFB = camera_fb_return;
 
-    xTaskCreatePinnedToCore(task_process_handler, TAG, 4 * 1024, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(task_process_handler, "face_recognition_task", 5 * 1024, NULL, 5, NULL, 0);
 }

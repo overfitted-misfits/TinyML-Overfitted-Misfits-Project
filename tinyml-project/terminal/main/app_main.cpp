@@ -10,7 +10,23 @@ static QueueHandle_t xQueueFacePrints = NULL;
 
 #define GPIO_BOOT GPIO_NUM_0
 
-
+static void printface(void*params)
+{
+    dl::Tensor<float> faceprint;
+    while(true)
+    {
+        if (xQueueFacePrints == NULL )
+        {
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+        else
+        {
+            xQueueReceive(xQueueFacePrints, &faceprint, portMAX_DELAY);
+            ESP_LOGE("app_main", "Print faceprint");
+            faceprint.print_all();
+        }
+    } // while true
+}
 
 extern "C" void app_main()
 {
@@ -49,13 +65,6 @@ extern "C" void app_main()
     register_camera(PIXFORMAT_RGB565, FRAMESIZE_QVGA, 2, xQueueAIFrame);
     // register_camera(PIXFORMAT_RGB565, FRAMESIZE_CIF, 2, xQueueAIFrame);
     register_human_face_recognition(xQueueAIFrame, xQueueFacePrints, NULL, true);
-
-    // while(true)
-    // {
-    //     dl::Tensor<float> faceprint;
-    //     xQueueReceive(xQueueFacePrints, &faceprint, portMAX_DELAY);
-    //     ESP_LOGE("app_main", "Print faceprint");
-    //     faceprint.print_all();
-
-    // } // while true
+    
+        xTaskCreatePinnedToCore(printface, "printface", 4 * 1024, NULL, 6, NULL, 0);
 }
