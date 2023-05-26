@@ -19,14 +19,10 @@
 #endif
 
 #include "who_ai_utils.hpp"
-#include "driver/gpio.h"
 #include "dl_variable.hpp"
 
 using namespace std;
 using namespace dl;
-
-#define BUTTON_GPIO_NUM (GPIO_NUM_0)
-#define LED_GPIO_NUM    (GPIO_NUM_4)
 
 static QueueHandle_t xQueueFrameI = NULL;
 static QueueHandle_t xQueueEvent = NULL;
@@ -103,9 +99,12 @@ static void task_process_handler(void *arg)
                         }
                     } // If queue is available
 
-                    // if (recognizer->get_enrolled_ids().size() < 3)
-                    if ( 0 == gpio_get_level(BUTTON_GPIO_NUM) ) // if button is pressed
+                    /**
+                     * Can Enable or Disable this as desired. Simply enrolls the first 3 faceprints
+                     */
+                    if (recognizer->get_enrolled_ids().size() < 3)
                     {
+                        ESP_LOGW("ENROLL", "Do enrollment of face embedding");
                         // Enroll the faceprint/embedding
                         recognizer->enroll_id(tensor, to_string(recognizer->get_enrolled_ids().size()), false);
                     } // if enrolled ids < 3
