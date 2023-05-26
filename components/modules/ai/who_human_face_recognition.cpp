@@ -25,6 +25,9 @@
 using namespace std;
 using namespace dl;
 
+#define BUTTON_GPIO_NUM (GPIO_NUM_0)
+#define LED_GPIO_NUM    (GPIO_NUM_4)
+
 static QueueHandle_t xQueueFrameI = NULL;
 static QueueHandle_t xQueueEvent = NULL;
 static QueueHandle_t xQueueFrameO = NULL;
@@ -80,39 +83,41 @@ static void task_process_handler(void *arg)
                 for (std::list<dl::detect::result_t>::iterator face_result = detect_results.begin(); face_result != detect_results.end(); face_result++, i++)
                 {
                     ESP_LOGW("DAH", "Processing detected person #%d of %d", i+1, detect_results.size());
+                    ESP_LOGW("RECOGNIZE", "Do recognition");
 
-                    if (recognizer->get_enrolled_ids().size() < 3)
+                    // Perform recognition against face prints/embeddings enrolled. However, none should ever be enrolled.
+                    // We do this to make the model compute the faceprint/embeddeding because no function call is exposed to do it otherwise.
+                    recognize_result = recognizer->recognize((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, face_result->keypoint);
+
+                    // Get reference to faceprint/embedding
+                    Tensor<float>& tensor = recognizer->get_face_emb();
+
+                    // Add faceprint/embedding to result queue to be processed by another task
+                    if ( xQueueResult != NULL )
                     {
-                        recognizer->enroll_id((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, face_result->keypoint, "", true);
-                        ESP_LOGW("ENROLL", "ID %d is enrolled", recognizer->get_enrolled_ids().back().id);
-                        Tensor<float>& tensor = recognizer->get_face_emb();
-                        tensor.print_all();
-                        tensor.print_shape();
-                        if ( xQueueResult != NULL )
+                        // Push faceprint to queue. If queue is busy for >500ms, skip this faceprint
+                        BaseType_t retc = xQueueSend(xQueueResult, &tensor, 500 / portTICK_PERIOD_MS);
+                        if ( retc != pdPASS )
                         {
-                            // recognize_result_tensor.insert(tensor.get_tensor())
-                            // Push faceprint to queue. If queue is busy, skip this faceprint
-                            xQueueSend(xQueueResult, &tensor, 0);
+                            ESP_LOGE("DAH", "Queue Overflow! Failed to push faceprint to xQueueResult queue!");
                         }
+                    } // If queue is available
+
+                    // if (recognizer->get_enrolled_ids().size() < 3)
+                    if ( 0 == gpio_get_level(BUTTON_GPIO_NUM) ) // if button is pressed
+                    {
+                        // Enroll the faceprint/embedding
+                        recognizer->enroll_id(tensor, to_string(recognizer->get_enrolled_ids().size()), false);
                     } // if enrolled ids < 3
-                    else // do recognition
+
+                    if (recognize_result.id > 0)
                     {
-                        ESP_LOGW("RECOGNIZE", "Do recognition");
-
-                        recognize_result = recognizer->recognize((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, face_result->keypoint);
-                        // Tensor<float>& tensor = recognizer->get_face_emb();
-                        // ESP_LOGE("DAH", "Print recognizer faceprint");
-                        // tensor.print_all();
-                        if (recognize_result.id > 0)
-                        {
-                            ESP_LOGW("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
-                        }
-                        else
-                        {
-                            ESP_LOGW("RECOGNIZE", "Person was not recognized");
-                        }
+                        ESP_LOGW("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
                     }
-
+                    else
+                    {
+                        ESP_LOGW("RECOGNIZE", "Person was not recognized");
+                    }
                 } // For each detected person
             }
             else
