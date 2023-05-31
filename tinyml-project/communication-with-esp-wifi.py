@@ -5,13 +5,23 @@ import queue
 import json
 import netifaces as ni
 import time
+import signal
+# import sys
+import os
 
 from faceprint_utils import compute_similarity
 
+# List of all connected sockets/clients
+server = None
+connections = []
+
+# Minimum similarity between two faces to be considered a match
 FACE_SIMILARITY_MATCH_THRESHOLD = 0.5
 
 # The port used by the server
 PORT = 40000
+
+# Set the HOST (this devices) IP address. Attempt to do it automatically
 # HOST_IP = '0.0.0.0'
 device_interface = 'wlp0s20f3'
 HOST_IP = ni.ifaddresses(device_interface)[ni.AF_INET][0]['addr']
@@ -19,13 +29,27 @@ HOST_IP = ni.ifaddresses(device_interface)[ni.AF_INET][0]['addr']
 # Create a queue to store the JSON objects
 rx_queue = queue.Queue()
 
+# Datastructure of the faceprints
 faceprints_map = dict()
 
+# Max possible JSON string to receive
 MAX_JSON_STR_LEN = 40000  # Change this according to your needs
+
+# JSON string start and stop markers/headers
 JSON_STR_START = '======START_JSON_MESSAGE======'
 JSON_STR_END = '------END_JSON_MESSAGE------'
 
+
+
+
 def handle_client(conn, addr):
+    """This run as a thread for each connected socket client. It receives data from the socket
+    and, for each fully received JSON message, it adds it to the rx_queue to be processed later by process_received_data().
+
+    Args:
+        conn (_type_): connection/socket handle
+        addr (_type_): Tuple of address bound to client's socket handle
+    """
     print('handle_client(): Connected client: ', addr)
     data_parts = ""
     try:
@@ -63,19 +87,34 @@ def handle_client(conn, addr):
         print(f"handle_client(): Connection with {addr} closed unexpectedly. Error: {e}")
     finally:
         conn.close()
-# def handle_client(conn, addr):
-#     print('Connected client: ', addr)
-#     while True:
-#         data = conn.recv(1024)
-#         if not data:
-#             break
-#         data = data.decode('utf-8') # Decode the data from bytes to string
-#         rx_queue.put(data) # Put the JSON object into the queue
-#         print(f"Received data from {addr}; pushed to rx queue.")
-#     conn.close()
 
 def process_received_data():
+    """Processes each fully received JSON string in rx_queue.
+    Each JSON object should have the following structure:
+    ```
+    {
+        "device_id": int,
+        "data_type": "string",
+        "data_length": int,
+        "data": []
+    }
+    ```
+    For example, a valid JSON object should look like this:
+    ```
+    {
+        "device_id": 0,
+        "data_type": "float",
+        "data_length": 5,
+        "data": [1.1 2.2 3.3 4.4 5.5]
+    }
+    ```
 
+    Each receded JSON string is converted to a JSON object and is
+    1. added to the faceprints_map if it is from device 0 and has not been seen before
+    2. deleted from the faceprints_map if it is NOT from device 0 and has been seen before. Additionally, a time delta is computed from start and end detection times
+    3. skipped if received from the same device as recorded already int he faceprints_map (ie duplicates)
+    4. skipped if face was seen by the end device but not by the start device (ie, only faces from device 0 can be added to the faceprints_map)
+    """
     last_epoch_time = 0
     while True:
 
@@ -196,21 +235,52 @@ def process_received_data():
             # This case will never be reached but added for clarity/safety
             print(f"process_received_data(): impossible case")
 
+def close_all_connections(signal, frame):
+    """signal handler for Ctrl+C
+    Close all client connections and socket server
+
+    Args:
+        signal (_type_): signal type
+        frame (_type_): 
+    """
+    print("\nCtrl+C detected. Closing all client connections.")
+    for conn in connections:
+        conn.close()
+    print("All client connections closed.")
+
+    print("Closing server socket.")
+    if server is not None:
+        server.close()
+    print("Server socket closed.")
+
+    # Force fill via process id python python sucks and has bugs and can't seem to kill itself with threads any other way
+    os.system('kill %d' % os.getpid())
+
 def start_server():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        print(f'Bind server to {HOST_IP}:{PORT}')
-        s.bind((HOST_IP, PORT))
-        s.listen()
-        print(f'Server listening on {HOST_IP}:{PORT}')
+    """main function; this will start the socket server, accept client connections, start threads to receive and process JSON strings, etc
+    """
+    # Register the signal handler
+    signal.signal(signal.SIGINT, close_all_connections)
 
-        # Start a thread that will process JSON objects
-        processing_thread = threading.Thread(target=process_received_data)
-        processing_thread.start()
+    print(f'Bind server to {HOST_IP}:{PORT}')
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((HOST_IP, PORT))
+    server.listen()
 
-        while True:
-            conn, addr = s.accept()
-            thread = threading.Thread(target=handle_client, args=(conn, addr))
-            thread.start()
+    print(f'Server listening on {HOST_IP}:{PORT}')
+
+    # Start a thread that will process JSON strings received from clients
+    print(f'Start processing_thread to process received JSON strings')
+    processing_thread = threading.Thread(target=process_received_data)
+    processing_thread.start()
+
+    print(f'Accept client connections...')
+    while True:
+        conn, addr = server.accept()
+        connections.append(conn)
+        print('Accepted new connection')
+        thread = threading.Thread(target=handle_client, args=(conn, addr))
+        thread.start()
 
 if __name__ == "__main__":
     start_server()
