@@ -135,8 +135,24 @@ def process_received_data():
                 existingFaceprint = existingFace['data']
 
                 # Compute similarity between new faceprint and existing faceprint in map
-                similarity = compute_similarity(existingFaceprint, newFaceprint)
-                print(f"process_received_data(): similarity={similarity} between new faceprint and existing faceprint #{count} in map")
+                similarity = None
+                try:
+                    similarity = compute_similarity(existingFaceprint, newFaceprint)
+                    print(f"process_received_data(): similarity={round(similarity*100,2)}% between new faceprint and existing faceprint #{count} in map")
+                except Exception as e:
+                    # Failed to parse string as a JSON object (string is not JSON string)
+                    print(f"\nEXPECTION: process_received_data(): Exception: \n{e}\n")
+                    print("FAIL: process_received_data(): failed to compute similarity between new faceprint and existing faceprint in map")
+                    print("FAIL: process_received_data(): Raw JSON string received: " + json_str)
+
+                    # Delete face from faceprint_map because faceprint may be invalid
+                    del faceprints_map[face_epoch]
+                    # Set matches non-zero value so that face does not get added to faceprints_map because we failed to check all faces in the map (and faceprint may be invalid)
+                    newFaceMatchesInMapCount = 1
+
+                    print("")
+                    # Break out of for loop
+                    break
 
                 # If similar enough, then it is considered a match
                 if similarity >= FACE_SIMILARITY_MATCH_THRESHOLD:
