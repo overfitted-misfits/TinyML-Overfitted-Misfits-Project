@@ -6,10 +6,12 @@ import json
 import netifaces as ni
 import time
 import signal
-# import sys
 import os
+import sys
 
 from faceprint_utils import compute_similarity
+from average_calculations import rolling_avg
+from average_calculations import exponential_moving_avg
 
 # List of all connected sockets/clients
 server = None
@@ -55,7 +57,7 @@ def handle_client(conn, addr):
     try:
         while True:
             data = conn.recv(1024)
-
+            # Need better detection of broken connections
             if not data:
                 break
 
@@ -210,10 +212,16 @@ def process_received_data():
                         # break
                     elif existingFace["device_id"] == 0 and newFace['device_id'] != 0:
                         # The device that detected the existingFace is the end device
-                        # Compute time delta and remove faceprint from faceprints_map
-                        time_delta = epoch_time - face_epoch
-                        print(f"process_received_data(): Time delta: {time_delta}")
                         del faceprints_map[face_epoch]
+
+                        # Compute time delta and remove faceprint from faceprints_map
+                        time_delta_ns = epoch_time - face_epoch
+                        time_delta_s = round(time_delta_ns / 1000000000, 2)
+                        print(f"process_received_data(): Time delta: {time_delta_s}s")
+                        rollingAvg = rolling_avg(time_delta_s)
+                        print(f"process_received_data(): Time rolling avg: {round(rollingAvg,2)}s")
+                        expMovingAvg = exponential_moving_avg(time_delta_s)
+                        print(f"process_received_data(): Time rolling avg: {round(expMovingAvg,2)}s")
 
                         # Match found, break the out of the faceprint_map loop
                         # break
@@ -253,8 +261,13 @@ def close_all_connections(signal, frame):
         server.close()
     print("Server socket closed.")
 
+    # sys.exit(0)
+
     # Force fill via process id python python sucks and has bugs and can't seem to kill itself with threads any other way
     os.system('kill %d' % os.getpid())
+    # os._exit(0)
+    
+    ## Note that python still sucks and can't actually free the socket it's using
 
 def start_server():
     """main function; this will start the socket server, accept client connections, start threads to receive and process JSON strings, etc
