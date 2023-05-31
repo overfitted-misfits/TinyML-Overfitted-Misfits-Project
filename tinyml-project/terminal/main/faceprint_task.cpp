@@ -1,4 +1,4 @@
-#include "who_human_face_recognition.hpp"
+#include "faceprint_task.hpp"
 
 #include "esp_log.h"
 #include "esp_camera.h"
@@ -145,7 +145,7 @@ static void task_process_handler(void *arg)
     }
 }
 
-void register_human_face_recognition(const QueueHandle_t frame_i,
+void register_face_recognition(const QueueHandle_t frame_i,
                                      const QueueHandle_t result,
                                      const QueueHandle_t frame_o,
                                      const bool camera_fb_return)
