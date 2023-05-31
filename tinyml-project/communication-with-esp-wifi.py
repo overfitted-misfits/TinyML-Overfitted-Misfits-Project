@@ -113,6 +113,9 @@ def process_received_data():
             print("process_received_data(): Faceprint is not 512 bytes long, discard!")
             continue
 
+        if newFace['data_type'] != "float":
+            print("WARNING: process_received_data(): data type is not of type float!")
+
         numExistingFaceprints = len(faceprints_map)
         print(f"process_received_data(): there are {numExistingFaceprints} faceprint(s) in the datastructure!")
 

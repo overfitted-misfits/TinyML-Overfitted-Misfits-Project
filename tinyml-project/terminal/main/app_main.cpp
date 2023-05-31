@@ -3,13 +3,12 @@
 #include "wifi_task.h"
 #include "dl_variable.hpp"
 #include "esp_log.h"
-#include "create_json.h"
 
 static QueueHandle_t xQueueAIFrame = NULL;
 static QueueHandle_t xQueueFacePrints = NULL;
 
-#define GPIO_BOOT GPIO_NUM_0
-
+#include "create_json.h"
+// Helper function for testing. Uncomment task in main function and comment out register_wifi() function to use
 static void printface(void*params)
 {
     dl::Tensor<float> faceprint;
