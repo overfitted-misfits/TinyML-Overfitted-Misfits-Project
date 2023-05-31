@@ -3,24 +3,30 @@
 
 #define TAG "JSON"
 
+
+#if CONFIG_MFN_V1
+#if CONFIG_S8
+char* create_json(cJSON **root, uint8_t device_id, int8_t * data, uint16_t data_length)
+#elif CONFIG_S16
 char* create_json(cJSON **root, uint8_t device_id, float * data, uint16_t data_length)
+#endif
+#endif
 {
-    // Device parameters
-    // int device_id = 1234;
-    const char* data_type = "float"; // or "int8"
-    
+#if CONFIG_MFN_V1
+#if CONFIG_S8
+    const char* data_type = "int8"; // or "int8"
+#elif CONFIG_S16
+    const char* data_type = "float"; // or "float"
+#endif
+#endif
+
     if (root == NULL)
     {
         ESP_LOGE(TAG, "Failed to create json object");
         return NULL;
     }
 
-    // Array data
-    // int data_length = 10;
-    // float data[data_length];
-
     // Create a cJSON root object
-    // cJSON * root = NULL;
     *root = cJSON_CreateObject();
     if(*root == NULL || data == NULL || data_length <= 0)
     {
@@ -34,13 +40,15 @@ char* create_json(cJSON **root, uint8_t device_id, float * data, uint16_t data_l
     cJSON_AddNumberToObject(*root, "data_length", data_length);
 
     ESP_LOGW("JSON", "Length of data=%d", data_length);
-    // for (uint16_t i = 0; i < data_length; ++i)
-    // {
-    //     ESP_LOGE("JSON", "%f ", data[i]);
-    // }
-    
+
     // Create a cJSON data array and add it to the root object
+#if CONFIG_MFN_V1
+#if CONFIG_S8
+    cJSON *data_array = cJSON_CreateIntArray(data, data_length);
+#elif CONFIG_S16
     cJSON *data_array = cJSON_CreateFloatArray(data, data_length);
+#endif
+#endif
     if(data_array == NULL)
     {
         cJSON_Delete(*root); // Delete root object to free memory
