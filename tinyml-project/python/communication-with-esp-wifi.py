@@ -221,7 +221,7 @@ def process_received_data():
                         rollingAvg = rolling_avg(time_delta_s)
                         print(f"process_received_data(): Time rolling avg: {round(rollingAvg,2)}s")
                         expMovingAvg = exponential_moving_avg(time_delta_s)
-                        print(f"process_received_data(): Time rolling avg: {round(expMovingAvg,2)}s")
+                        print(f"process_received_data(): Time exponential moving avg: {round(expMovingAvg,2)}s")
 
                         # Match found, break the out of the faceprint_map loop
                         # break
