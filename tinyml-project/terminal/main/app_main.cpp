@@ -69,7 +69,7 @@ extern "C" void app_main()
     register_camera(PIXFORMAT_RGB565, FRAMESIZE_QVGA, 2, xQueueAIFrame);
     // // register_camera(PIXFORMAT_RGB565, FRAMESIZE_CIF, 2, xQueueAIFrame);
 
-    register_face_recognition(xQueueAIFrame, xQueueFacePrints, NULL, true);
+    register_face_recognition(0, xQueueAIFrame, xQueueFacePrints, NULL, true);
     
     // Device ID controls which device in this is in the order of all devices doing face print productions
     // A Device ID of 0 is for the very first device in the line doing the faceprint productions.

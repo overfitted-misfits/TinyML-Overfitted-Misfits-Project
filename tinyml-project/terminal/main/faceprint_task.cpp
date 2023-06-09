@@ -22,6 +22,7 @@
 using namespace std;
 using namespace dl;
 
+static uint8_t numFacesToEnroll = 0;
 static QueueHandle_t xQueueFrameI = NULL;
 static QueueHandle_t xQueueEvent = NULL;
 static QueueHandle_t xQueueFrameO = NULL;
@@ -98,9 +99,9 @@ static void task_process_handler(void *arg)
                     } // If queue is available
 
                     /**
-                     * Can Enable or Disable this as desired. Simply enrolls the first 3 faceprints
+                     * Can Enable or Disable this as desired. Simply enrolls the first numFacesToEnroll faceprints
                      */
-                    if (recognizer->get_enrolled_ids().size() < 3)
+                    if (recognizer->get_enrolled_ids().size() < numFacesToEnroll)
                     {
                         ESP_LOGW("ENROLL", "Do enrollment of face embedding");
                         // Enroll the faceprint/embedding
@@ -145,11 +146,13 @@ static void task_process_handler(void *arg)
     }
 }
 
-void register_face_recognition(const QueueHandle_t frame_i,
-                                     const QueueHandle_t result,
-                                     const QueueHandle_t frame_o,
-                                     const bool camera_fb_return)
+void register_face_recognition(const uint8_t nFacesToEnroll,
+                               const QueueHandle_t frame_i,
+                               const QueueHandle_t result,
+                               const QueueHandle_t frame_o,
+                               const bool camera_fb_return)
 {
+    numFacesToEnroll = nFacesToEnroll;
     xQueueFrameI = frame_i;
     xQueueFrameO = frame_o;
     xQueueResult = result;
