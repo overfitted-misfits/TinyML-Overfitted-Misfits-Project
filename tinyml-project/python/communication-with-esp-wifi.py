@@ -126,11 +126,11 @@ def process_received_data():
 
         # Because time is the key in the map, loop if the current time is the same as the last time
         # Should never happen because time is in nanoseconds
-        epoch_time = int(time.time_ns())
-        while epoch_time == last_epoch_time:
-            epoch_time = int(time.time_ns())
+        epoch_time_ns = int(time.time_ns())
+        while epoch_time_ns == last_epoch_time:
+            epoch_time_ns = int(time.time_ns())
 
-        last_epoch_time = epoch_time
+        last_epoch_time = epoch_time_ns
 
         newFace = None
         # Convert JSON string to a JSON object
@@ -163,7 +163,7 @@ def process_received_data():
         if numExistingFaceprints <= 0 and newFace['device_id'] == 0:
             # If faceprint map is empty, then add the new faceprint to the map
             print("process_received_data(): Add new faceprint to empty faceprints_map")
-            faceprints_map[epoch_time] = newFace
+            faceprints_map[epoch_time_ns] = newFace
         elif numExistingFaceprints <= 0 and newFace['device_id'] != 0:
             # If faceprint map is empty, and new faceprint is NOT from start device, skip...
             print("process_received_data(): Skipping adding new faceprint from non-begin device to empty faceprints_map")
@@ -215,7 +215,7 @@ def process_received_data():
                         del faceprints_map[face_epoch]
 
                         # Compute time delta and remove faceprint from faceprints_map
-                        time_delta_ns = epoch_time - face_epoch
+                        time_delta_ns = epoch_time_ns - face_epoch
                         time_delta_s = round(time_delta_ns / 1000000000, 2)
                         print(f"process_received_data(): Time delta: {time_delta_s}s")
                         rollingAvg = rolling_avg(time_delta_s)
@@ -237,8 +237,8 @@ def process_received_data():
             if newFaceMatchesInMapCount == 0 and newFace["device_id"] == 0:
                 # newFace doesn't exist in faceprints_map, but is from start device
                 # Add new face to faceprints_map
-                print(f"process_received_data(): Add new faceprint to faceprints_map")
-                faceprints_map[epoch_time] = newFace
+                print(f"process_received_data(): Add new faceprint to faceprints_map with timestamp {epoch_time_ns}s")
+                faceprints_map[epoch_time_ns] = newFace
         else:
             # This case will never be reached but added for clarity/safety
             print(f"process_received_data(): impossible case")
