@@ -1,15 +1,14 @@
 #include "who_camera.h"
-#include "who_human_face_recognition.hpp"
-#include "who_button.h"
-#include "event_logic.hpp"
-#include "who_adc_button.h"
+#include "faceprint_task.hpp"
+#include "wifi_task.h"
 #include "dl_variable.hpp"
+#include "esp_log.h"
 
 static QueueHandle_t xQueueAIFrame = NULL;
 static QueueHandle_t xQueueFacePrints = NULL;
 
-#define GPIO_BOOT GPIO_NUM_0
-
+#include "create_json.h"
+// Helper function for testing. Uncomment task in main function and comment out register_wifi() function to use
 static void printface(void*params)
 {
     dl::Tensor<float> faceprint;
@@ -21,9 +20,27 @@ static void printface(void*params)
         }
         else
         {
+            ESP_LOGE("printface", "1: min free stack is %d", uxTaskGetStackHighWaterMark(NULL));
             xQueueReceive(xQueueFacePrints, &faceprint, portMAX_DELAY);
-            ESP_LOGE("app_main", "Print faceprint");
-            faceprint.print_all();
+            ESP_LOGE("printface", "2: min free stack is %d", uxTaskGetStackHighWaterMark(NULL));
+            // float test = 12.0;
+            cJSON * root = NULL;
+            char* json_string = NULL;
+
+            // char* create_json(cJSON **root, uint8_t device_id, const float * const data, uint16_t data_length);
+            // json_string = create_json(&root, (uint8_t)0, &test, (uint16_t)1);
+            json_string = create_json(&root, 0, faceprint.element, faceprint.get_size());
+            if(root == NULL)
+            {
+                ESP_LOGE("JSON", "Failed to create json object");
+            }
+            ESP_LOGE("printface", "3: min free stack is %d", uxTaskGetStackHighWaterMark(NULL));
+            ESP_LOGE("app_main", "Print json: '''\n%s\n'''", json_string);
+            ESP_LOGE("printface", "4: min free stack is %d", uxTaskGetStackHighWaterMark(NULL));
+            free_json(root, json_string);
+            root = NULL;
+            json_string = NULL;
+            // faceprint.print_all();
         }
     } // while true
 }
@@ -48,11 +65,18 @@ extern "C" void app_main()
     //configure GPIO with the given settings
     gpio_config(&io_conf);
 
-    // Could try increasing camera resolution here but device runs ou tof RAM if any higher than FRAMESIZE_QVGA is selected
+    // Could try increasing camera resolution here but device runs out of RAM if any higher than FRAMESIZE_QVGA is selected
     register_camera(PIXFORMAT_RGB565, FRAMESIZE_QVGA, 2, xQueueAIFrame);
-    // register_camera(PIXFORMAT_RGB565, FRAMESIZE_CIF, 2, xQueueAIFrame);
+    // // register_camera(PIXFORMAT_RGB565, FRAMESIZE_CIF, 2, xQueueAIFrame);
 
-    register_human_face_recognition(xQueueAIFrame, xQueueFacePrints, NULL, true);
+    register_face_recognition(0, xQueueAIFrame, xQueueFacePrints, NULL, true);
     
-    xTaskCreatePinnedToCore(printface, "printface", 4 * 1024, NULL, 6, NULL, 0);
+    // Device ID controls which device in this is in the order of all devices doing face print productions
+    // A Device ID of 0 is for the very first device in the line doing the faceprint productions.
+    // In our projet, there are only two device ID's. Any >0 value for the 2nd (END Device) ID will work and signify the end of the line
+    // faceprint detection.
+    /* CONFIGURE THIS */
+    const uint8_t device_id = 0;
+    register_wifi(device_id, xQueueFacePrints);
+    // xTaskCreatePinnedToCore(printface, "printface", 4 * 1024, NULL, 6, NULL, 0);
 }
